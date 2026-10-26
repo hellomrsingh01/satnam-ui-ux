@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Ship It · Satnam Yadav</title>
+  <meta name="description" content="A tiny platformer: run, jump, stomp the blockers every design team knows, and ship the launch.">
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+  <meta name="theme-color" content="#FFF4E2">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=Shantell+Sans:wght@500;600&family=Space+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    /* Full-screen platformer. The world is drawn on the canvas by play.js;
+       the HUD, overlays and touch pad are plain HTML on top. */
+    html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+    body { touch-action: none; -webkit-user-select: none; user-select: none; }
+    .world { position: fixed; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
+
+    .hud { position: fixed; top: 0; left: 0; right: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
+      padding: max(0.8rem, env(safe-area-inset-top)) max(0.9rem, env(safe-area-inset-right)) 0 max(0.9rem, env(safe-area-inset-left)); pointer-events: none; }
+    .hud > * { pointer-events: auto; }
+    .stats { display: flex; gap: 0.4rem; flex-wrap: wrap; justify-content: center; }
+    .stat { display: inline-flex; align-items: center; gap: 0.35rem; height: 2.4rem; padding: 0 0.8rem; border: 2px solid var(--ink); border-radius: 999px; background: var(--cream); box-shadow: 3px 3px 0 var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+    .stat svg { width: 1.25rem; height: 1.25rem; }
+    .stat .mono { font-size: 0.68rem; color: var(--ink-2); }
+    .hud-btns { display: flex; gap: 0.4rem; }
+    .chip { display: inline-grid; place-items: center; min-width: 2.75rem; height: 2.75rem; padding: 0 0.8rem; border: 2px solid var(--ink); border-radius: 999px; background: var(--cream); box-shadow: 3px 3px 0 var(--ink); font-weight: 700; font-size: 0.92rem; }
+    .chip svg { width: 1.2rem; height: 1.2rem; }
+    .chip:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+    .snd-off, .chip.off .snd-on { display: none; }
+    .chip.off .snd-off { display: inline; }
+    .heart { fill: var(--tomato); stroke: var(--ink); stroke-width: 1.6; }
+    .heart.gone { fill: var(--cream-2); stroke: var(--muted); }
+
+    .screen { position: fixed; inset: 0; z-index: 3; display: grid; place-items: center; padding: 1.2rem; background: rgba(25, 22, 18, 0.28); }
+    .screen[hidden] { display: none; }
+    .gpanel { width: min(30rem, 100%); max-height: calc(100dvh - 2.4rem); overflow: auto; padding: 1.8rem; border: 2.5px solid var(--ink); border-radius: var(--radius); background: var(--cream); box-shadow: var(--shadow-lg); text-align: center; animation: panelIn 0.45s var(--spring); }
+    .gpanel h1 { font-family: var(--display); font-weight: 800; font-size: clamp(2rem, 7vw, 2.8rem); line-height: 0.95; letter-spacing: -0.03em; font-stretch: 85%; }
+    .gpanel h1 em { font-style: normal; background: linear-gradient(transparent 58%, var(--sun) 58% 92%, transparent 92%); }
+    .gpanel p { margin-top: 0.7rem; color: var(--ink-2); }
+    .gpanel .kicker { margin-bottom: 0.9rem; }
+    .acts { display: flex; flex-wrap: wrap; gap: 0.7rem; justify-content: center; margin-top: 1.4rem; }
+    .keys { display: grid; grid-template-columns: auto auto; gap: 0.45rem 0.8rem; justify-content: center; align-items: center; margin-top: 1.2rem; text-align: left; font-size: 0.95rem; }
+    kbd { display: inline-grid; place-items: center; min-width: 1.9rem; height: 1.9rem; padding: 0 0.45rem; margin-right: 0.2rem; border: 2px solid var(--ink); border-radius: 8px; background: var(--cream-2); box-shadow: 2px 2px 0 var(--ink); font-family: var(--mono); font-size: 0.72rem; }
+    .result { display: flex; gap: 0.6rem; justify-content: center; flex-wrap: wrap; margin-top: 1.1rem; }
+    .result span { padding: 0.45rem 0.85rem; border: 2px solid var(--ink); border-radius: 14px; background: var(--cream-2); font-weight: 700; }
+    .result span:nth-child(1) { background: var(--sun); }
+    .result span:nth-child(2) { background: var(--mint); }
+    .result span:nth-child(3) { background: var(--lilac); }
+    .fb { margin-top: 1.4rem; padding: 1.1rem 1rem 0.9rem; border: 2px dashed var(--ink); border-radius: 16px; background: var(--cream-2); text-align: center; }
+    .fb-title { margin: 0 0 0.7rem !important; font-family: var(--display); font-weight: 800; font-size: 1.25rem; letter-spacing: -0.02em; color: var(--ink) !important; }
+    .fb-vote { height: 2.9rem; font-size: 0.98rem; }
+    .fb-vote svg { width: 1.1rem; height: 1.1rem; }
+    .fb-play[hidden], .fb-vote[hidden], .fb-gift[hidden], .fb-count[hidden] { display: none; }
+    .fb-gift-note { margin: 0 0 0.2rem !important; }
+    .fb-gift { margin-top: 0.2rem; }
+    .fb-gift .fb-label { margin-top: 0.4rem; }
+    .fb-fine { margin-top: 0.45rem !important; font-size: 0.78rem !important; color: var(--muted) !important; }
+    .gift-ico { display: block; width: 3.4rem; height: 3.4rem; margin: 0 auto 0.3rem; overflow: visible; }
+    .gift-lid { transform-box: fill-box; transform-origin: 50% 100%; animation: lid 2.4s var(--spring) infinite; }
+    @keyframes lid { 0%, 70%, 100% { transform: none; } 78% { transform: translateY(-5px) rotate(-6deg); } 86% { transform: translateY(-2px) rotate(4deg); } }
+    @media (prefers-reduced-motion: reduce) { .gift-lid { animation: none; } }
+
+    .fb-play { height: 3.1rem; font-size: 1.02rem; animation: unlock 0.5s var(--spring); }
+    .fb-play svg { width: 1.3rem; height: 1.3rem; }
+    @keyframes unlock { from { transform: scale(0.6) rotate(-6deg); opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) { .fb-play { animation: none; } }
+    .fb-vote[disabled] { background: var(--mint); cursor: default; transform: none; box-shadow: 2px 2px 0 var(--ink); }
+    .fb-count { margin-top: 0.6rem !important; font-family: var(--hand); font-weight: 600; font-size: 0.98rem; color: var(--ink) !important; }
+    .fb-label { display: block; margin-top: 0.9rem; text-align: left; font-size: 0.85rem; color: var(--ink-2); }
+    .fb-label i { color: var(--muted); }
+    .fb-row { display: flex; gap: 0.5rem; margin-top: 0.35rem; }
+    .fb-row input { flex: 1; min-width: 0; height: 2.6rem; padding: 0 0.8rem; border: 2px solid var(--ink); border-radius: 12px; background: var(--cream); font: inherit; font-size: 0.95rem; color: var(--ink); }
+    .fb-row input::placeholder { color: var(--muted); }
+    .fb-send { height: 2.6rem; padding: 0 1rem; font-size: 0.92rem; box-shadow: 3px 3px 0 var(--ink); }
+    .fb-trap { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+    .fb-status { min-height: 1.2em; margin-top: 0.5rem !important; font-size: 0.85rem; color: var(--ink) !important; }
+    .fb-alt { display: inline-block; margin-top: 0.2rem; font-size: 0.82rem; color: var(--ink-2); border-bottom: 1.5px solid var(--ink-2); }
+    .credit { margin-top: 1.2rem; font-size: 0.62rem; color: var(--muted); }
+    .mail-note { margin-top: 1rem; font-family: var(--mono); font-size: 0.8rem; color: var(--ink-2); user-select: all; -webkit-user-select: all; }
+    .note { font-family: var(--hand); font-size: 0.95rem; }
+    .touch-only, .coarse .key-only { display: none; }
+    .coarse .touch-only { display: revert; }
+
+    /* Touch pad: thumb-sized, below the world in portrait so thumbs never cover the hero. */
+    .pad { position: fixed; left: 0; right: 0; bottom: 0; z-index: 2; display: none; justify-content: space-between; align-items: center;
+      padding: 0 max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left)); pointer-events: none; }
+    .coarse .pad { display: flex; }
+    .pad-group { display: flex; gap: 0.8rem; }
+    .pad button { pointer-events: auto; display: grid; place-items: center; width: 5.2rem; height: 5.2rem; border: 2.5px solid var(--ink); border-radius: 50%; background: var(--cream); box-shadow: var(--shadow); touch-action: none; }
+    .pad button svg { width: 2rem; height: 2rem; }
+    .pad .jump { width: 6.4rem; height: 6.4rem; background: var(--sun); font-family: var(--hand); font-weight: 600; font-size: 1.1rem; }
+    .pad button.on { transform: translate(3px, 3px); box-shadow: 1px 1px 0 var(--ink); }
+    @media (orientation: landscape) and (max-height: 560px) {
+      .pad { padding-bottom: max(0.6rem, env(safe-area-inset-bottom)); }
+      .pad button { width: 4.2rem; height: 4.2rem; }
+      .pad .jump { width: 5rem; height: 5rem; font-size: 1rem; }
+    }
+
+    .peek .hud, .peek .pad, .peek .screen { display: none; }
+    @keyframes panelIn { from { transform: scale(0.85) rotate(-2deg); opacity: 0; } }
+    @media (max-width: 520px) {
+      /* Phones: buttons on the top row, stats centred on a row of their own. */
+      .hud { flex-wrap: wrap; row-gap: 0.5rem; }
+      .stats { order: 3; width: 100%; flex-wrap: nowrap; gap: 0.3rem; }
+      .stat { height: 2.1rem; gap: 0.25rem; padding: 0 0.6rem; font-size: 0.9rem; }
+      .stat .mono { display: none; }
+      .stat svg { width: 1rem; height: 1rem; }
+      .chip { min-width: 2.5rem; height: 2.5rem; padding: 0 0.6rem; }
+      .chip .lbl { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <canvas class="world" tabindex="0" aria-label="Ship It, a platformer. Arrow keys to run, space to jump."></canvas>
+
+  <div class="hud">
+    <a class="chip" href="/" aria-label="Back to the portfolio"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="var(--ink)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span></a>
+    <div class="stats" aria-live="off">
+      <span class="stat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9h11l-1.3 9.2a2 2 0 0 1-2 1.8H8.3a2 2 0 0 1-2-1.8z" fill="var(--cream)" stroke="var(--ink)" stroke-width="1.8" stroke-linejoin="round"/><path d="M5.6 12h9.8l-.6 4H6.2z" fill="var(--sun)"/><path d="M16 11h1.5a2 2 0 0 1 0 4h-2" fill="none" stroke="var(--ink)" stroke-width="1.8"/></svg><b data-chai>0</b><span class="mono">chai</span></span>
+      <span class="stat"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="8" width="18" height="11" rx="4" fill="var(--tomato)" stroke="var(--ink)" stroke-width="1.8"/><path d="M7 4.5l3 2.5M17 4.5l-3 2.5" stroke="var(--ink)" stroke-width="1.8" stroke-linecap="round"/></svg><b data-shipped>0</b><span class="mono">stomped</span></span>
+      <span class="stat"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="9" width="9" height="10" rx="4" fill="var(--mint)" stroke="var(--ink)" stroke-width="1.6"/><rect x="13" y="6" width="9" height="13" rx="4" fill="var(--cobalt)" stroke="var(--ink)" stroke-width="1.6"/></svg><b data-team>0</b><span class="mono">team</span></span>
+      <span class="stat" data-lives aria-label="Lives"></span>
+    </div>
+    <div class="hud-btns">
+      <button class="chip" type="button" data-music-btn aria-label="Turn music off" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 17.5V6l10-2v11" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round"/><ellipse cx="6.6" cy="17.6" rx="2.8" ry="2.2" fill="var(--mint)" stroke="var(--ink)" stroke-width="1.8"/><ellipse cx="16.6" cy="15.4" rx="2.8" ry="2.2" fill="var(--mint)" stroke="var(--ink)" stroke-width="1.8"/><path class="snd-off" d="M4 4l16 16" stroke="var(--ink)" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+      <button class="chip" type="button" data-sound aria-label="Turn sound off" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="var(--sun)" stroke="var(--ink)" stroke-width="1.8" stroke-linejoin="round"/><path class="snd-on" d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linecap="round"/><path class="snd-off" d="M15.5 9.5l5 5M20.5 9.5l-5 5" fill="none" stroke="var(--ink)" stroke-width="2" stroke-linecap="round"/></svg></button>
+      <button class="chip" type="button" data-pause aria-label="Pause"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 6v12M15.5 6v12" stroke="var(--ink)" stroke-width="3" stroke-linecap="round"/></svg></button>
+      <button class="chip" type="button" data-full aria-label="Full screen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="var(--ink)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    </div>
+  </div>
+
+  <div class="pad" aria-hidden="true">
+    <div class="pad-group">
+      <button type="button" data-hold="left" tabindex="-1"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="var(--ink)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button type="button" data-hold="right" tabindex="-1"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" fill="none" stroke="var(--ink)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    </div>
+    <button class="jump" type="button" data-hold="jump" tabindex="-1">Jump</button>
+  </div>
+
+  <div class="screen" data-screen="start">
+    <div class="gpanel" role="dialog" aria-labelledby="t-start">
+      <p class="kicker mono">Side quest · World 1</p>
+      <h1 id="t-start">Ship <em>it.</em></h1>
+      <p>Stomp the blockers every design team knows. Each one has its own bad habit. Find your team in the idea blocks, drink the chai and reach the launch flag.</p>
+      <div class="keys key-only">
+        <span><kbd>←</kbd><kbd>→</kbd></span><span>Run (or A and D)</span>
+        <span><kbd>Space</kbd></span><span>Jump. Hold to go higher</span>
+        <span><kbd>P</kbd><kbd>M</kbd></span><span>Pause, sound on or off</span>
+      </div>
+      <p class="note touch-only">Left thumb runs, right thumb jumps. Hold jump to go higher. Turn your phone sideways for a wider view.</p>
+      <div class="acts"><button class="btn sun" type="button" data-go>Start the quest</button></div>
+      <p class="note" data-slow-note hidden>Slow connection, so the music is off to save data. The music button turns it on.</p>
+      <p class="credit mono">Music: 8 Bit Adventure by FesliyanStudios.com</p>
+    </div>
+  </div>
+
+  <div class="screen" data-screen="pause" hidden>
+    <div class="gpanel" role="dialog" aria-labelledby="t-pause">
+      <p class="kicker mono">Paused</p>
+      <h1 id="t-pause">Chai <em>break.</em></h1>
+      <p>The blockers will wait. They always do.</p>
+      <div class="acts">
+        <button class="btn sun" type="button" data-resume>Back to it</button>
+        <button class="btn cream" type="button" data-go>Start over</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="screen" data-screen="over" hidden>
+    <div class="gpanel" role="dialog" aria-labelledby="t-over">
+      <p class="kicker mono">Side quest failed</p>
+      <h1 id="t-over">The blockers won <em>this round.</em></h1>
+      <p>Every launch has a rough sprint. One more?</p>
+      <div class="acts">
+        <button class="btn sun" type="button" data-go>Try again</button>
+        <a class="btn cream" href="/">Back to the portfolio</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="screen" data-screen="win" hidden>
+    <div class="gpanel" role="dialog" aria-labelledby="t-win">
+      <p class="kicker mono">Launch day</p>
+      <h1 id="t-win">Shipped. <em>Nice.</em></h1>
+      <div class="result"><span data-r-time></span><span data-r-chai></span><span data-r-ship></span></div>
+      <p data-r-team></p>
+      <p data-r-best class="note"></p>
+      <p>Like this kind of thinking on your team?</p>
+      <div class="acts">
+        <a class="btn sun" href="mailto:hellosatnamsingh01@gmail.com" data-mail="hellosatnamsingh01@gmail.com">Email Satnam</a>
+        <button class="btn cream" type="button" data-go>Play again</button>
+      </div>
+      <p class="mail-note" data-mail-note>hellosatnamsingh01@gmail.com</p>
+    </div>
+  </div>
+
+  <!-- Feedback card: play.js puts a copy in the win, game-over and pause screens. -->
+  <template id="feedback">
+    <form class="fb" data-fb novalidate>
+      <p class="fb-title">Want more levels?</p>
+      <button class="btn sun fb-vote" type="button" data-fb-vote><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V6M6 11.5L12 5.5l6 6" fill="none" stroke="var(--ink)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg> Yes, build World 2</button>
+      <div class="fb-gift" data-fb-gift hidden>
+        <svg class="gift-ico" viewBox="0 0 48 48" aria-hidden="true"><g class="gift-lid"><path d="M24 14c-3-6-11-7-11-2 0 3 5 4 11 2zM24 14c3-6 11-7 11-2 0 3-5 4-11 2z" fill="var(--pink)" stroke="var(--ink)" stroke-width="2.2" stroke-linejoin="round"/><rect x="7" y="14" width="34" height="9" rx="3" fill="var(--tomato)" stroke="var(--ink)" stroke-width="2.4"/></g><rect x="10" y="23" width="28" height="18" rx="3" fill="var(--sun)" stroke="var(--ink)" stroke-width="2.4"/><path d="M24 14v27" stroke="var(--ink)" stroke-width="2.4"/><path d="M21 23h6v18h-6z" fill="var(--pink)" stroke="var(--ink)" stroke-width="2"/></svg>
+        <p class="fb-count fb-gift-note">World 2 is a secret level, only for players who ask for it.</p>
+      </div>
+      <a class="btn sun fb-play" href="/world2.html" data-fb-play hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3c3 2.2 4.4 5.4 4.2 9.6L12 17l-4.2-4.4C7.6 8.4 9 5.2 12 3z" fill="var(--cream)" stroke="var(--ink)" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="9.5" r="1.9" fill="var(--cobalt)" stroke="var(--ink)" stroke-width="1.4"/><path d="M8 13.5l-2.5 3 2.8.3M16 13.5l2.5 3-2.8.3" fill="var(--tomato)" stroke="var(--ink)" stroke-width="1.6" stroke-linejoin="round"/><path d="M10.5 18.5c.4 1.2 1 2 1.5 2.5.5-.5 1.1-1.3 1.5-2.5" fill="var(--sun)" stroke="var(--ink)" stroke-width="1.5" stroke-linejoin="round"/></svg> <span data-fb-play-label>Play World 2</span></a>
+      <p class="fb-count" data-fb-count>Be one of the first to ask for World 2.</p>
+      <label class="fb-label">
+        <span data-fb-ask>What should World 2 have? Or any feedback. <i>(optional)</i></span>
+        <span class="fb-row">
+          <input type="text" name="message" maxlength="500" autocomplete="off" placeholder="A boss fight, a deadline chase..." data-fb-msg>
+          <button class="btn cream fb-send" type="submit">Send</button>
+        </span>
+      </label>
+      <input class="fb-trap" type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <p class="fb-status" role="status" aria-live="polite" data-fb-status></p>
+    </form>
+  </template>
+
+  <!-- Background music loads only when a game starts (preload none). -->
+  <audio data-music src="local/audio/8-bit-adventure.mp3" preload="none" loop></audio>
+  
+  <script src="/play.js" defer></script>
+</body>
+</html>
